@@ -1,10 +1,12 @@
 package com.proyecto.servicios.controller;
 
+import com.proyecto.servicios.model.ApiResponse;
 import com.proyecto.servicios.model.LoginRequest;
 import com.proyecto.servicios.model.LoginResponse;
 import com.proyecto.servicios.service.AuthService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -23,8 +25,9 @@ public class AuthController {
 
     @Operation(summary = "Iniciar sesión con correo electrónico y contraseña para obtener un token JWT")
     @PostMapping(value = "/login", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<LoginResponse> login(@RequestBody LoginRequest request) {
-        return ResponseEntity.ok(authService.login(request));
+    public ResponseEntity<ApiResponse<LoginResponse>> login(
+            @Valid @RequestBody LoginRequest request) {
+        LoginResponse response = authService.login(request);
+        return ResponseEntity.ok(ApiResponse.ok("Inicio de sesión exitoso.", response));
     }
 }
-

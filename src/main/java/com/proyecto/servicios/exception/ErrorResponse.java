@@ -17,9 +17,9 @@ import java.util.Map;
 public class ErrorResponse {
     private LocalDateTime timestamp;
     private int status;
+    private boolean exito;
     private String error;
     private String mensaje;
     private String path;
     private Map<String, String> detallesValidacion;
 }
-

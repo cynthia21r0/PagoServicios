@@ -5,22 +5,22 @@ import com.proyecto.servicios.entity.sf.Cuenta;
 import com.proyecto.servicios.exception.ClienteNoEncontradoException;
 import com.proyecto.servicios.exception.CuentaNoEncontradaException;
 import com.proyecto.servicios.exception.ValidacionException;
-import com.proyecto.servicios.model.CuentaActualizacionRequest;
-import com.proyecto.servicios.model.CuentaRequest;
-import com.proyecto.servicios.model.CuentaResponse;
-import com.proyecto.servicios.model.SaldoCuentaResponse;
+import com.proyecto.servicios.model.*;
 import com.proyecto.servicios.repositorys.sf.ClienteRepository;
 import com.proyecto.servicios.repositorys.sf.CuentaRepository;
 import com.proyecto.servicios.service.CuentaService;
 import com.proyecto.servicios.util.ValidadorNegocio;
+import jakarta.persistence.criteria.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -38,6 +38,52 @@ public class CuentaServiceImpl implements CuentaService {
     private BigDecimal saldoInicialSistema;
 
     private final SecureRandom secureRandom = new SecureRandom();
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<CuentaResponse> filtrarCuentas(CuentaFiltroRequest filtro) {
+        if (filtro == null) {
+            return consultarTodas();
+        }
+        if (filtro.getSaldoMinimo() != null && filtro.getSaldoMaximo() != null
+                && filtro.getSaldoMinimo().compareTo(filtro.getSaldoMaximo()) > 0) {
+            throw new ValidacionException("El saldo mínimo no puede ser mayor que el saldo máximo.");
+        }
+
+        Specification<Cuenta> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (filtro.getId() != null) {
+                predicates.add(cb.equal(root.get("id"), filtro.getId()));
+            }
+            if (filtro.getNumeroCuenta() != null && !filtro.getNumeroCuenta().isBlank()) {
+                predicates.add(cb.equal(root.get("numeroCuenta"), filtro.getNumeroCuenta().trim()));
+            }
+            if (filtro.getClienteId() != null) {
+                predicates.add(cb.equal(root.get("cliente").get("id"), filtro.getClienteId()));
+            }
+            if (filtro.getEstatus() != null && !filtro.getEstatus().isBlank()) {
+                predicates.add(cb.equal(cb.upper(root.get("estatus")), filtro.getEstatus().trim().toUpperCase()));
+            }
+            if (filtro.getSaldoMinimo() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("saldo"), filtro.getSaldoMinimo()));
+            }
+            if (filtro.getSaldoMaximo() != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("saldo"), filtro.getSaldoMaximo()));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        List<Cuenta> cuentas = cuentaRepository.findAll(spec);
+        if (cuentas.isEmpty() && (filtro.getId() != null || filtro.getNumeroCuenta() != null)) {
+            throw new CuentaNoEncontradaException("No se encontró ninguna cuenta bancaria con los criterios especificados.");
+        }
+
+        return cuentas.stream()
+                .map(this::mapearACuentaResponse)
+                .collect(Collectors.toList());
+    }
 
     @Override
     @Transactional(readOnly = true)
@@ -117,6 +163,9 @@ public class CuentaServiceImpl implements CuentaService {
         if (request == null || request.getClienteId() == null) {
             throw new ValidacionException("El clienteId es obligatorio para crear una cuenta bancaria.");
         }
+        if (request.getId() != null || request.getFechaCreacion() != null || request.getFechaActualizacion() != null) {
+            throw new ValidacionException("No está permitido asignar manualmente campos controlados por el servidor (id, fechaCreacion, fechaActualizacion).");
+        }
 
         Cliente cliente = clienteRepository.findById(request.getClienteId())
                 .orElseThrow(() -> new ClienteNoEncontradoException("No se encontró el cliente con ID: " + request.getClienteId()));
@@ -154,9 +203,24 @@ public class CuentaServiceImpl implements CuentaService {
 
     @Override
     @Transactional
+    public CuentaResponse actualizarCuenta(CuentaActualizacionRequest request) {
+        if (request == null || request.getNumeroCuenta() == null || request.getNumeroCuenta().isBlank()) {
+            throw new ValidacionException("El número de cuenta (numeroCuenta) es obligatorio en el cuerpo de la petición.");
+        }
+        return actualizarCuenta(request.getNumeroCuenta(), request);
+    }
+
+    @Override
+    @Transactional
     public CuentaResponse actualizarCuenta(String numeroCuenta, CuentaActualizacionRequest request) {
         if (request == null) {
             throw new ValidacionException("El cuerpo de actualización de la cuenta no puede ser nulo.");
+        }
+        if (request.getId() != null || request.getFechaCreacion() != null || request.getFechaActualizacion() != null) {
+            throw new ValidacionException("No está permitido modificar campos controlados por el servidor (id, fechaCreacion, fechaActualizacion).");
+        }
+        if (request.getNuevoNumeroCuenta() != null) {
+            throw new ValidacionException("No está permitido modificar el número de cuenta.");
         }
 
         Cuenta cuenta = cuentaRepository.findByNumeroCuenta(numeroCuenta.trim())

@@ -116,6 +116,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         ErrorResponse errorResponse = ErrorResponse.builder()
                 .timestamp(LocalDateTime.now())
                 .status(status.value())
+                .exito(false)
                 .error(error)
                 .mensaje(mensaje)
                 .path(request.getRequestURI())

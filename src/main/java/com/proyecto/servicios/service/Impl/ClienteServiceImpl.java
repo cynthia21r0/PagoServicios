@@ -12,9 +12,13 @@ import com.proyecto.servicios.repositorys.sf.UsuarioRepository;
 import com.proyecto.servicios.security.BCryptPasswordEncoder;
 import com.proyecto.servicios.service.ClienteService;
 import com.proyecto.servicios.util.ValidadorNegocio;
+import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.JoinType;
+import jakarta.persistence.criteria.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +27,7 @@ import java.security.SecureRandom;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -56,6 +61,10 @@ public class ClienteServiceImpl implements ClienteService {
             throw new ValidacionException("Los datos de registro del cliente son obligatorios.");
         }
 
+        if (request.getId() != null || request.getFechaCreacion() != null || request.getFechaActualizacion() != null) {
+            throw new ValidacionException("No está permitido asignar manualmente campos controlados por el servidor (id, fechaCreacion, fechaActualizacion).");
+        }
+
         ValidadorNegocio.validarNombreOApellido(request.getNombre(), "nombre", true);
         ValidadorNegocio.validarNombreOApellido(request.getSegundoNombre(), "segundoNombre", false);
         ValidadorNegocio.validarNombreOApellido(request.getApellidoPaterno(), "apellidoPaterno", true);
@@ -72,6 +81,9 @@ public class ClienteServiceImpl implements ClienteService {
         ValidadorNegocio.validarTelefono(request.getTelefonoAlternativo(), "telefonoAlternativo", false);
 
         DomicilioDto domInput = extraerDomicilio(request);
+        if (domInput.getId() != null) {
+            throw new ValidacionException("No está permitido especificar el identificador interno del domicilio.");
+        }
         ValidadorNegocio.validarCampoObligatorio(domInput.getCalle(), "calle");
         ValidadorNegocio.validarCampoObligatorio(domInput.getNumeroExterior(), "numeroExterior");
         ValidadorNegocio.validarCampoObligatorio(domInput.getColonia(), "colonia");
@@ -157,6 +169,72 @@ public class ClienteServiceImpl implements ClienteService {
                 guardado.getId(), cuenta.getNumeroCuenta(), usuario.getCorreo());
 
         return mapearAClienteResponse(guardado);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ClienteResponse> filtrarClientes(ClienteFiltroRequest filtro) {
+        if (filtro == null) {
+            return consultarTodos();
+        }
+        if (filtro.getFechaInicio() != null && filtro.getFechaFin() != null
+                && filtro.getFechaInicio().isAfter(filtro.getFechaFin())) {
+            throw new ValidacionException("La fecha de inicio no puede ser posterior a la fecha de fin.");
+        }
+
+        Specification<Cliente> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+            query.distinct(true);
+
+            if (filtro.getId() != null) {
+                predicates.add(cb.equal(root.get("id"), filtro.getId()));
+            }
+            if (filtro.getNombre() != null && !filtro.getNombre().isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("nombre")), "%" + filtro.getNombre().trim().toLowerCase() + "%"));
+            }
+            if (filtro.getSegundoNombre() != null && !filtro.getSegundoNombre().isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("segundoNombre")), "%" + filtro.getSegundoNombre().trim().toLowerCase() + "%"));
+            }
+            if (filtro.getApellidoPaterno() != null && !filtro.getApellidoPaterno().isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("apellidoPaterno")), "%" + filtro.getApellidoPaterno().trim().toLowerCase() + "%"));
+            }
+            if (filtro.getApellidoMaterno() != null && !filtro.getApellidoMaterno().isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("apellidoMaterno")), "%" + filtro.getApellidoMaterno().trim().toLowerCase() + "%"));
+            }
+            if (filtro.getCurp() != null && !filtro.getCurp().isBlank()) {
+                predicates.add(cb.equal(cb.upper(root.get("curp")), filtro.getCurp().trim().toUpperCase()));
+            }
+            if (filtro.getRfc() != null && !filtro.getRfc().isBlank()) {
+                predicates.add(cb.equal(cb.upper(root.get("rfc")), filtro.getRfc().trim().toUpperCase()));
+            }
+            if (filtro.getCorreoElectronico() != null && !filtro.getCorreoElectronico().isBlank()) {
+                predicates.add(cb.equal(cb.lower(root.get("correoElectronico")), filtro.getCorreoElectronico().trim().toLowerCase()));
+            }
+            if (filtro.getNumeroCuenta() != null && !filtro.getNumeroCuenta().isBlank()) {
+                Join<Cliente, Cuenta> cuentaJoin = root.join("cuentas", JoinType.INNER);
+                predicates.add(cb.equal(cuentaJoin.get("numeroCuenta"), filtro.getNumeroCuenta().trim()));
+            }
+            if (filtro.getActivo() != null) {
+                predicates.add(cb.equal(root.get("activo"), filtro.getActivo()));
+            }
+            if (filtro.getFechaInicio() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("fechaCreacion"), filtro.getFechaInicio().atStartOfDay()));
+            }
+            if (filtro.getFechaFin() != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("fechaCreacion"), filtro.getFechaFin().atTime(LocalTime.MAX)));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        List<Cliente> resultados = clienteRepository.findAll(spec);
+        if (resultados.isEmpty() && (filtro.getId() != null || filtro.getCurp() != null || filtro.getRfc() != null || filtro.getNumeroCuenta() != null)) {
+            throw new ClienteNoEncontradoException("No se encontró ningún cliente que coincida con los criterios de búsqueda especificados.");
+        }
+
+        return resultados.stream()
+                .map(this::mapearAClienteResponse)
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -275,9 +353,22 @@ public class ClienteServiceImpl implements ClienteService {
 
     @Override
     @Transactional
+    public ClienteResponse actualizarCliente(ClienteActualizacionRequest request) {
+        if (request == null || request.getId() == null) {
+            throw new ValidacionException("El identificador del cliente (id) es obligatorio en el cuerpo de la petición.");
+        }
+        return actualizarCliente(request.getId(), request);
+    }
+
+    @Override
+    @Transactional
     public ClienteResponse actualizarCliente(Long id, ClienteActualizacionRequest request) {
         if (request == null) {
             throw new ValidacionException("El cuerpo de actualización no puede ser nulo.");
+        }
+
+        if (request.getFechaCreacion() != null || request.getFechaActualizacion() != null) {
+            throw new ValidacionException("No está permitido modificar campos de auditoría controlados por el servidor (fechaCreacion, fechaActualizacion).");
         }
 
         Cliente cliente = clienteRepository.findById(id)
@@ -424,6 +515,15 @@ public class ClienteServiceImpl implements ClienteService {
 
         Cliente actualizado = clienteRepository.save(cliente);
         return mapearAClienteResponse(actualizado);
+    }
+
+    @Override
+    @Transactional
+    public ClienteResponse darBajaLogica(ClienteBajaRequest request) {
+        if (request == null || request.getId() == null) {
+            throw new ValidacionException("El identificador del cliente (id) es obligatorio para dar de baja.");
+        }
+        return darBajaLogica(request.getId());
     }
 
     @Override
