@@ -45,8 +45,8 @@ public class ConfigDB {
             config.setPassword(env.getProperty("spring.datasource.password"));
             config.setUsername(env.getProperty("spring.datasource.username"));
             config.setMaximumPoolSize(10);
-            config.setMaxLifetime(18800);
-            config.setConnectionTimeout(5000);
+            config.setMaxLifetime(1800000);
+            config.setConnectionTimeout(30000);
             config.setValidationTimeout(5000);
             config.setMinimumIdle(2);
             config.setConnectionTestQuery("SELECT 1");
@@ -73,10 +73,11 @@ public class ConfigDB {
             HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
             em.setJpaVendorAdapter(vendorAdapter);
           Map<String, Object> properties=new HashMap<>();
-          properties.put("hibernate.hbm2ddl.auto", "none");
-            properties.put("hibernate.show-sql", false);
-            properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
-            properties.put("jakarta.persistence.query.timeout", 600000);
+          properties.put("hibernate.hbm2ddl.auto", env.getProperty("spring.jpa.hibernate.ddl-auto", "update"));
+          properties.put("hibernate.show_sql", false);
+          properties.put("hibernate.dialect", env.getProperty("spring.jpa.database-platform", "org.hibernate.dialect.PostgreSQLDialect"));
+          properties.put("jakarta.persistence.query.timeout", 600000);
+          em.setJpaPropertyMap(properties);
 
 
         } catch (Exception e) {
