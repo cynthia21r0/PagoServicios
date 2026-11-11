@@ -5,13 +5,16 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.proyecto.servicios.controller.AuthController;
 import com.proyecto.servicios.controller.ClienteController;
 import com.proyecto.servicios.controller.CuentaController;
+import com.proyecto.servicios.controller.TransaccionPagoController;
 import com.proyecto.servicios.controller.UsuarioController;
 import com.proyecto.servicios.exception.GlobalExceptionHandler;
+import com.proyecto.servicios.exception.TransaccionPendienteConciliacionException;
 import com.proyecto.servicios.exception.UsuarioNoEncontradoException;
 import com.proyecto.servicios.model.*;
 import com.proyecto.servicios.service.AuthService;
 import com.proyecto.servicios.service.ClienteService;
 import com.proyecto.servicios.service.CuentaService;
+import com.proyecto.servicios.service.TransaccionPagoService;
 import com.proyecto.servicios.service.UsuarioService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,6 +52,9 @@ class OnboardingControllerTest {
     @Mock
     private AuthService authService;
 
+    @Mock
+    private TransaccionPagoService transaccionPagoService;
+
     @InjectMocks
     private UsuarioController usuarioController;
 
@@ -61,6 +67,9 @@ class OnboardingControllerTest {
     @InjectMocks
     private AuthController authController;
 
+    @InjectMocks
+    private TransaccionPagoController transaccionPagoController;
+
     @BeforeEach
     void setUp() {
         objectMapper = new ObjectMapper();
@@ -69,7 +78,8 @@ class OnboardingControllerTest {
                         usuarioController,
                         clienteController,
                         cuentaController,
-                        authController
+                        authController,
+                        transaccionPagoController
                 )
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -182,5 +192,63 @@ class OnboardingControllerTest {
                 .andExpect(jsonPath("$.exito").value(true))
                 .andExpect(jsonPath("$.datos.numeroCuenta").value("1234567890"));
     }
-}
 
+    @Test
+    void pagarServicio_Exitoso_Retorna200ConFolioProveedor() throws Exception {
+        PagoServicioRequest req = PagoServicioRequest.builder()
+                .idempotencyKey("IDEMP-2026-9999")
+                .clienteId(1L)
+                .numeroCuenta("1234567890")
+                .idServicio("1")
+                .idProducto("10")
+                .referenciaPago("5512345678")
+                .monto(new BigDecimal("100.00"))
+                .build();
+
+        PagoServicioResponse resp = PagoServicioResponse.builder()
+                .transaccionId(1L)
+                .idempotencyKey("IDEMP-2026-9999")
+                .transaccionLocalId("TX-1234567890ABCDEF")
+                .estatus("EXITOSA")
+                .folioProveedor("AUT-555555")
+                .monto(new BigDecimal("100.00"))
+                .saldoAnterior(new BigDecimal("1000.00"))
+                .saldoDisponible(new BigDecimal("900.00"))
+                .build();
+
+        when(transaccionPagoService.procesarPagoServicio(any(), any())).thenReturn(resp);
+
+        mockMvc.perform(post("/transacciones/pagar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.exito").value(true))
+                .andExpect(jsonPath("$.datos.estatus").value("EXITOSA"))
+                .andExpect(jsonPath("$.datos.folioProveedor").value("AUT-555555"));
+    }
+
+    @Test
+    void pagarServicio_TimeoutProveedor_Retorna504ConFolioEnDetalles() throws Exception {
+        PagoServicioRequest req = PagoServicioRequest.builder()
+                .idempotencyKey("IDEMP-2026-TIMEOUT")
+                .clienteId(1L)
+                .numeroCuenta("1234567890")
+                .idServicio("1")
+                .idProducto("10")
+                .referenciaPago("5512345678")
+                .monto(new BigDecimal("100.00"))
+                .build();
+
+        when(transaccionPagoService.procesarPagoServicio(any(), any()))
+                .thenThrow(new TransaccionPendienteConciliacionException("Operación retenida para conciliación", "TX-TIMEOUT001"));
+
+        mockMvc.perform(post("/transacciones/pagar")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isGatewayTimeout())
+                .andExpect(jsonPath("$.exito").value(false))
+                .andExpect(jsonPath("$.status").value(504))
+                .andExpect(jsonPath("$.detallesValidacion.transaccionLocalId").value("TX-TIMEOUT001"))
+                .andExpect(jsonPath("$.detallesValidacion.estatus").value("PENDIENTE_CONCILIACION"));
+    }
+}

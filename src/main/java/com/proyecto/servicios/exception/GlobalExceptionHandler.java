@@ -37,6 +37,11 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.NOT_FOUND, "Usuario no encontrado", ex.getMessage(), request.getRequestURI(), null);
     }
 
+    @ExceptionHandler(TransaccionNoEncontradaException.class)
+    public ResponseEntity<ErrorResponse> handleTransaccionNoEncontrada(TransaccionNoEncontradaException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.NOT_FOUND, "Transacción no encontrada", ex.getMessage(), request.getRequestURI(), null);
+    }
+
     @ExceptionHandler(ClienteYaRegistradoException.class)
     public ResponseEntity<ErrorResponse> handleClienteYaRegistrado(ClienteYaRegistradoException ex, HttpServletRequest request) {
         return buildResponse(HttpStatus.CONFLICT, "Cliente ya registrado", ex.getMessage(), request.getRequestURI(), null);
@@ -57,9 +62,49 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.CONFLICT, "Correo electrónico duplicado", ex.getMessage(), request.getRequestURI(), null);
     }
 
+    @ExceptionHandler(TransaccionDuplicadaException.class)
+    public ResponseEntity<ErrorResponse> handleTransaccionDuplicada(TransaccionDuplicadaException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.CONFLICT, "Solicitud de transacción duplicada", ex.getMessage(), request.getRequestURI(), null);
+    }
+
     @ExceptionHandler(ValidacionException.class)
     public ResponseEntity<ErrorResponse> handleValidacion(ValidacionException ex, HttpServletRequest request) {
         return buildResponse(HttpStatus.BAD_REQUEST, "Regla de negocio incumplida", ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(ProductoInvalidoException.class)
+    public ResponseEntity<ErrorResponse> handleProductoInvalido(ProductoInvalidoException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Producto o servicio inválido", ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(MontoInvalidoException.class)
+    public ResponseEntity<ErrorResponse> handleMontoInvalido(MontoInvalidoException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_REQUEST, "Monto de operación inválido", ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(SaldoInsuficienteException.class)
+    public ResponseEntity<ErrorResponse> handleSaldoInsuficiente(SaldoInsuficienteException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, "Saldo insuficiente", ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(ProveedorRechazoTransaccionException.class)
+    public ResponseEntity<ErrorResponse> handleProveedorRechazo(ProveedorRechazoTransaccionException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.UNPROCESSABLE_ENTITY, "Operación rechazada por el proveedor", ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(TransaccionPendienteConciliacionException.class)
+    public ResponseEntity<ErrorResponse> handleTransaccionPendienteConciliacion(TransaccionPendienteConciliacionException ex, HttpServletRequest request) {
+        Map<String, String> detalles = new LinkedHashMap<>();
+        if (ex.getTransaccionLocalId() != null) {
+            detalles.put("transaccionLocalId", ex.getTransaccionLocalId());
+            detalles.put("estatus", "PENDIENTE_CONCILIACION");
+        }
+        return buildResponse(HttpStatus.GATEWAY_TIMEOUT, "Transacción en proceso de conciliación", ex.getMessage(), request.getRequestURI(), detalles);
+    }
+
+    @ExceptionHandler(ProveedorComunicacionException.class)
+    public ResponseEntity<ErrorResponse> handleProveedorComunicacion(ProveedorComunicacionException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.BAD_GATEWAY, "Error de comunicación con proveedor de pagos", ex.getMessage(), request.getRequestURI(), null);
     }
 
     @ExceptionHandler(PasswordInvalidaException.class)
@@ -75,6 +120,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UsuarioInactivoException.class)
     public ResponseEntity<ErrorResponse> handleUsuarioInactivo(UsuarioInactivoException ex, HttpServletRequest request) {
         return buildResponse(HttpStatus.FORBIDDEN, "Usuario inactivo", ex.getMessage(), request.getRequestURI(), null);
+    }
+
+    @ExceptionHandler(OperacionNoAutorizadaException.class)
+    public ResponseEntity<ErrorResponse> handleOperacionNoAutorizada(OperacionNoAutorizadaException ex, HttpServletRequest request) {
+        return buildResponse(HttpStatus.FORBIDDEN, "Operación no autorizada", ex.getMessage(), request.getRequestURI(), null);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -99,7 +149,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException ex, HttpServletRequest request) {
-        log.error("Violación de integridad de datos en {}: {}", request.getRequestURI(), ex.getMessage());
+        log.error("Violación de integridad de datos en {}", request.getRequestURI());
         return buildResponse(HttpStatus.CONFLICT, "Conflicto de integridad de datos",
                 "No fue posible completar la operación porque los datos infringen una restricción de unicidad o integridad.",
                 request.getRequestURI(), null);
@@ -128,7 +178,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGeneralException(Exception ex, HttpServletRequest request) {
-        log.error("Error no controlado al procesar solicitud en {}", request.getRequestURI(), ex);
+        log.error("Error inesperado al procesar solicitud en {}", request.getRequestURI());
         return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "Error interno en el procesamiento de la solicitud",
                 "La operación no pudo completarse debido a una condición inesperada en el servidor. Por favor, verifique su solicitud o intente más tarde.",
                 request.getRequestURI(), null);
