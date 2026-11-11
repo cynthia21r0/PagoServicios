@@ -6,6 +6,9 @@ import com.proyecto.servicios.exception.ClienteNoEncontradoException;
 import com.proyecto.servicios.exception.CorreoDuplicadoException;
 import com.proyecto.servicios.exception.UsuarioNoEncontradoException;
 import com.proyecto.servicios.exception.ValidacionException;
+import com.proyecto.servicios.model.UsuarioActualizacionRequest;
+import com.proyecto.servicios.model.UsuarioBajaRequest;
+import com.proyecto.servicios.model.UsuarioFiltroRequest;
 import com.proyecto.servicios.model.UsuarioRequest;
 import com.proyecto.servicios.model.UsuarioResponse;
 import com.proyecto.servicios.repositorys.sf.ClienteRepository;
@@ -13,13 +16,17 @@ import com.proyecto.servicios.repositorys.sf.UsuarioRepository;
 import com.proyecto.servicios.security.BCryptPasswordEncoder;
 import com.proyecto.servicios.service.UsuarioService;
 import com.proyecto.servicios.util.ValidadorNegocio;
+import jakarta.persistence.criteria.Predicate;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -37,37 +44,64 @@ public class UsuarioServiceImpl implements UsuarioService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<UsuarioResponse> filtrarUsuarios(Long id, Long clienteId, String correo, Boolean activo) {
-        if (id != null) {
-            Usuario u = usuarioRepository.findById(id)
-                    .orElseThrow(() -> new UsuarioNoEncontradoException("No se encontró el usuario con ID: " + id));
-            return Collections.singletonList(mapearAUsuarioResponse(u));
-        }
-
-        if (clienteId != null) {
-            Usuario u = usuarioRepository.findByClienteId(clienteId)
-                    .orElseThrow(() -> new UsuarioNoEncontradoException("No se encontró usuario asociado al cliente con ID: " + clienteId));
-            return Collections.singletonList(mapearAUsuarioResponse(u));
-        }
-
-        List<Usuario> lista = usuarioRepository.findAll();
-
-        if (correo != null && !correo.trim().isEmpty()) {
-            String filtroCorreo = correo.trim().toLowerCase();
-            lista = lista.stream()
-                    .filter(u -> u.getCorreo() != null && u.getCorreo().toLowerCase().contains(filtroCorreo))
+    public List<UsuarioResponse> filtrarUsuarios(UsuarioFiltroRequest filtro) {
+        if (filtro == null) {
+            return usuarioRepository.findAll()
+                    .stream()
+                    .map(this::mapearAUsuarioResponse)
                     .collect(Collectors.toList());
         }
 
-        if (activo != null) {
-            lista = lista.stream()
-                    .filter(u -> activo.equals(u.getActivo()))
-                    .collect(Collectors.toList());
+        if (filtro.getFechaInicio() != null && filtro.getFechaFin() != null
+                && filtro.getFechaInicio().isAfter(filtro.getFechaFin())) {
+            throw new ValidacionException("La fecha de inicio no puede ser posterior a la fecha de fin.");
         }
 
-        return lista.stream()
+        Specification<Usuario> spec = (root, query, cb) -> {
+            List<Predicate> predicates = new ArrayList<>();
+
+            if (filtro.getId() != null) {
+                predicates.add(cb.equal(root.get("id"), filtro.getId()));
+            }
+            if (filtro.getClienteId() != null) {
+                predicates.add(cb.equal(root.get("cliente").get("id"), filtro.getClienteId()));
+            }
+            if (filtro.getCorreo() != null && !filtro.getCorreo().isBlank()) {
+                predicates.add(cb.like(cb.lower(root.get("correo")), "%" + filtro.getCorreo().trim().toLowerCase() + "%"));
+            }
+            if (filtro.getActivo() != null) {
+                predicates.add(cb.equal(root.get("activo"), filtro.getActivo()));
+            }
+            if (filtro.getFechaInicio() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(root.get("fechaCreacion"), filtro.getFechaInicio().atStartOfDay()));
+            }
+            if (filtro.getFechaFin() != null) {
+                predicates.add(cb.lessThanOrEqualTo(root.get("fechaCreacion"), filtro.getFechaFin().atTime(LocalTime.MAX)));
+            }
+
+            return cb.and(predicates.toArray(new Predicate[0]));
+        };
+
+        List<Usuario> resultados = usuarioRepository.findAll(spec);
+        if (resultados.isEmpty() && (filtro.getId() != null || filtro.getClienteId() != null)) {
+            throw new UsuarioNoEncontradoException("No se encontró ningún usuario que coincida con los criterios especificados.");
+        }
+
+        return resultados.stream()
                 .map(this::mapearAUsuarioResponse)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<UsuarioResponse> filtrarUsuarios(Long id, Long clienteId, String correo, Boolean activo) {
+        UsuarioFiltroRequest filtro = UsuarioFiltroRequest.builder()
+                .id(id)
+                .clienteId(clienteId)
+                .correo(correo)
+                .activo(activo)
+                .build();
+        return filtrarUsuarios(filtro);
     }
 
     @Override
@@ -75,6 +109,9 @@ public class UsuarioServiceImpl implements UsuarioService {
     public UsuarioResponse agregarUsuario(UsuarioRequest request) {
         if (request == null) {
             throw new ValidacionException("Los datos del usuario son obligatorios.");
+        }
+        if (request.getId() != null || request.getFechaCreacion() != null || request.getFechaActualizacion() != null) {
+            throw new ValidacionException("No está permitido asignar manualmente campos controlados por el servidor (id, fechaCreacion, fechaActualizacion).");
         }
 
         ValidadorNegocio.validarCorreo(request.getCorreo());
@@ -108,6 +145,66 @@ public class UsuarioServiceImpl implements UsuarioService {
         return mapearAUsuarioResponse(guardado);
     }
 
+    @Override
+    @Transactional
+    public UsuarioResponse actualizarUsuario(UsuarioActualizacionRequest request) {
+        if (request == null || request.getId() == null) {
+            throw new ValidacionException("El identificador del usuario (id) es obligatorio.");
+        }
+        if (request.getFechaCreacion() != null || request.getFechaActualizacion() != null || request.getClienteId() != null) {
+            throw new ValidacionException("No está permitido modificar directamente campos controlados por el servidor (clienteId, fechaCreacion, fechaActualizacion).");
+        }
+
+        Usuario usuario = usuarioRepository.findById(request.getId())
+                .orElseThrow(() -> new UsuarioNoEncontradoException("No se encontró el usuario con ID: " + request.getId()));
+
+        if (request.getCorreo() != null && !request.getCorreo().isBlank()) {
+            ValidadorNegocio.validarCorreo(request.getCorreo());
+            String nuevoCorreo = request.getCorreo().trim().toLowerCase();
+            if (!nuevoCorreo.equalsIgnoreCase(usuario.getCorreo())) {
+                Optional<Usuario> existente = usuarioRepository.findByCorreoIgnoreCase(nuevoCorreo);
+                if (existente.isPresent() && !existente.get().getId().equals(usuario.getId())) {
+                    throw new CorreoDuplicadoException("Ya existe otro usuario registrado con el correo electrónico: " + nuevoCorreo);
+                }
+                usuario.setCorreo(nuevoCorreo);
+                if (usuario.getCliente() != null) {
+                    usuario.setCliente(usuario.getCliente());
+                    usuario.getCliente().setCorreoElectronico(nuevoCorreo);
+                }
+            }
+        }
+
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            ValidadorNegocio.validarPassword(request.getPassword());
+            usuario.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+
+        if (request.getActivo() != null) {
+            if (Boolean.TRUE.equals(request.getActivo()) && usuario.getCliente() != null && !Boolean.TRUE.equals(usuario.getCliente().getActivo())) {
+                throw new ValidacionException("No se puede activar un usuario cuyo cliente asociado se encuentra dado de baja lógica.");
+            }
+            usuario.setActivo(request.getActivo());
+        }
+
+        Usuario actualizado = usuarioRepository.save(usuario);
+        return mapearAUsuarioResponse(actualizado);
+    }
+
+    @Override
+    @Transactional
+    public UsuarioResponse darBajaUsuario(UsuarioBajaRequest request) {
+        if (request == null || request.getId() == null) {
+            throw new ValidacionException("El identificador del usuario (id) es obligatorio para realizar la baja.");
+        }
+
+        Usuario usuario = usuarioRepository.findById(request.getId())
+                .orElseThrow(() -> new UsuarioNoEncontradoException("No se encontró el usuario con ID: " + request.getId()));
+
+        usuario.setActivo(false);
+        Usuario actualizado = usuarioRepository.save(usuario);
+        return mapearAUsuarioResponse(actualizado);
+    }
+
     private UsuarioResponse mapearAUsuarioResponse(Usuario usuario) {
         return UsuarioResponse.builder()
                 .id(usuario.getId())
@@ -119,4 +216,3 @@ public class UsuarioServiceImpl implements UsuarioService {
                 .build();
     }
 }
-

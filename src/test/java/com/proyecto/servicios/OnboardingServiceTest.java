@@ -21,10 +21,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -133,6 +136,14 @@ class OnboardingServiceTest {
     }
 
     @Test
+    void registrarCliente_CampoControladoPorServidor_LanzaValidacionException() {
+        ClienteRegistroRequest req = buildClienteValido();
+        req.setFechaCreacion(LocalDateTime.now());
+
+        assertThrows(ValidacionException.class, () -> clienteService.registrarCliente(req));
+    }
+
+    @Test
     void registrarCliente_MenorDeEdad_LanzaValidacionException() {
         ClienteRegistroRequest req = buildClienteValido();
         req.setFechaNacimiento(LocalDate.now().minusYears(16));
@@ -158,10 +169,11 @@ class OnboardingServiceTest {
         when(clienteRepository.findById(1L)).thenReturn(Optional.of(existente));
 
         ClienteActualizacionRequest updateCurp = ClienteActualizacionRequest.builder()
+                .id(1L)
                 .curp("OTRA900515HDFRNS01")
                 .build();
 
-        assertThrows(ValidacionException.class, () -> clienteService.actualizarCliente(1L, updateCurp));
+        assertThrows(ValidacionException.class, () -> clienteService.actualizarCliente(updateCurp));
     }
 
     @Test
@@ -191,11 +203,30 @@ class OnboardingServiceTest {
         when(clienteRepository.findById(1L)).thenReturn(Optional.of(cliente));
         when(clienteRepository.save(any(Cliente.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        ClienteResponse res = clienteService.darBajaLogica(1L);
+        ClienteResponse res = clienteService.darBajaLogica(new ClienteBajaRequest(1L));
 
         assertFalse(res.getActivo());
         assertFalse(res.getUsuario().getActivo());
         assertEquals("INACTIVA", res.getCuentas().get(0).getEstatus());
+    }
+
+    @Test
+    void filtrarUsuarios_ConCriteriosCombinados_RetornaLista() {
+        Usuario usuario = new Usuario();
+        usuario.setId(5L);
+        usuario.setCorreo("juan.perez@ejemplo.com");
+        usuario.setActivo(true);
+
+        when(usuarioRepository.findAll(any(Specification.class))).thenReturn(List.of(usuario));
+
+        UsuarioFiltroRequest filtro = UsuarioFiltroRequest.builder()
+                .correo("juan.perez")
+                .activo(true)
+                .build();
+
+        List<UsuarioResponse> resultado = usuarioService.filtrarUsuarios(filtro);
+        assertEquals(1, resultado.size());
+        assertEquals("juan.perez@ejemplo.com", resultado.get(0).getCorreo());
     }
 
     @Test

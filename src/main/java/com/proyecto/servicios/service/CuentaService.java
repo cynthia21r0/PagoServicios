@@ -1,6 +1,7 @@
 package com.proyecto.servicios.service;
 
 import com.proyecto.servicios.model.CuentaActualizacionRequest;
+import com.proyecto.servicios.model.CuentaFiltroRequest;
 import com.proyecto.servicios.model.CuentaRequest;
 import com.proyecto.servicios.model.CuentaResponse;
 import com.proyecto.servicios.model.SaldoCuentaResponse;
@@ -8,6 +9,8 @@ import com.proyecto.servicios.model.SaldoCuentaResponse;
 import java.util.List;
 
 public interface CuentaService {
+
+    List<CuentaResponse> filtrarCuentas(CuentaFiltroRequest filtro);
 
     CuentaResponse consultarPorNumeroCuenta(String numeroCuenta);
 
@@ -23,6 +26,7 @@ public interface CuentaService {
 
     CuentaResponse crearCuenta(CuentaRequest request);
 
+    CuentaResponse actualizarCuenta(CuentaActualizacionRequest request);
+
     CuentaResponse actualizarCuenta(String numeroCuenta, CuentaActualizacionRequest request);
 }
-
