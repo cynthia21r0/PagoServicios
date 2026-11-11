@@ -11,6 +11,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -39,12 +41,16 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
     }
 
     @Override
-    @Scheduled(fixedRateString = "${gestopago.auth.refresh-rate-ms:3600000}", initialDelay = 0)
+    @Scheduled(fixedRateString = "${gestopago.auth.refresh-rate-ms:3600000}", initialDelay = 10000)
     public void renovarToken() {
         log.info("Renovando token GestoPago para distribuidor={}", idDistribuidor);
         try {
-            GestoPagoAuthResponse response = gestoPagoAuthClient.authenticate(
-                    idDistribuidor, codigoDispositivo, password);
+            Map<String, Object> formParams = new HashMap<>();
+            formParams.put("idDistribuidor", idDistribuidor);
+            formParams.put("codigoDispositivo", codigoDispositivo);
+            formParams.put("password", password);
+
+            GestoPagoAuthResponse response = gestoPagoAuthClient.authenticate(formParams);
 
             if (response == null || response.getToken() == null) {
                 log.error("La respuesta de GestoPago no contiene token");

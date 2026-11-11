@@ -12,7 +12,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.*;
+import org.xml.sax.InputSource;
+import org.xml.sax.XMLReader;
 
+import javax.xml.XMLConstants;
+import javax.xml.parsers.SAXParserFactory;
+import javax.xml.transform.sax.SAXSource;
 import java.io.StringReader;
 
 @Component
@@ -39,11 +44,10 @@ public class GestoPagoProductClient {
         String url = baseUrl + endpointPath;
         log.info("Iniciando invocación GET a {}", url);
         try {
-            // Obtenemos el token activo de base de datos usando el método real
             GestoPagoToken tokenEntity = gestoPagoTokenService.obtenerTokenActivo(idDistribuidor, codigoDispositivo)
                     .orElseThrow(() -> new RuntimeException("No hay token activo de GestoPago registrado en BD"));
 
-            String bearerToken = tokenEntity.getToken(); // Ajusta al getter de tu entidad GestoPagoToken si se llama distinto
+            String bearerToken = tokenEntity.getToken();
 
             HttpHeaders headers = new HttpHeaders();
             headers.setBearerAuth(bearerToken);
@@ -56,7 +60,18 @@ public class GestoPagoProductClient {
                 log.info("Fin de invocación GET exitosa. Parseando XML...");
                 JAXBContext context = JAXBContext.newInstance(CatProductXmlDto.class);
                 Unmarshaller unmarshaller = context.createUnmarshaller();
-                return (CatProductXmlDto) unmarshaller.unmarshal(new StringReader(response.getBody()));
+
+                SAXParserFactory spf = SAXParserFactory.newInstance();
+                spf.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                spf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+                spf.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                spf.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+
+                XMLReader xmlReader = spf.newSAXParser().getXMLReader();
+                InputSource inputSource = new InputSource(new StringReader(response.getBody()));
+                SAXSource source = new SAXSource(xmlReader, inputSource);
+
+                return (CatProductXmlDto) unmarshaller.unmarshal(source);
             } else {
                 log.warn("Respuesta no exitosa del servicio externo. Código: {}", response.getStatusCode());
                 throw new RuntimeException("Respuesta no exitosa: " + response.getStatusCode());
