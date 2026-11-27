@@ -1,76 +1,86 @@
 package com.proyecto.servicios.controller;
 
-import com.proyecto.servicios.model.ApiResponse;
-import com.proyecto.servicios.model.UsuarioActualizacionRequest;
-import com.proyecto.servicios.model.UsuarioBajaRequest;
-import com.proyecto.servicios.model.UsuarioFiltroRequest;
-import com.proyecto.servicios.model.UsuarioRequest;
-import com.proyecto.servicios.model.UsuarioResponse;
+import com.proyecto.servicios.model.response.GenericResponse;
+import com.proyecto.servicios.model.response.PaginaResponseDTO;
+import com.proyecto.servicios.model.usuario.*;
 import com.proyecto.servicios.service.UsuarioService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
+@Validated
 @RestController
 @RequestMapping("/usuarios")
-@Tag(name = "Usuarios", description = "API para administración, consulta dinámica y actualización de usuarios")
+@RequiredArgsConstructor
 public class UsuarioController {
 
-    @Autowired
-    private UsuarioService usuarioService;
+    private final UsuarioService usuarioService;
 
-    @Operation(summary = "Consultar usuarios combinando filtros dinámicos en el cuerpo de la petición (GET /usuarios/filtro)")
-    @GetMapping(value = "/filtro", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<List<UsuarioResponse>>> filtrarUsuariosGet(
-            @Valid @RequestBody(required = false) UsuarioFiltroRequest request) {
-        List<UsuarioResponse> usuarios = usuarioService.filtrarUsuarios(request);
-        return ResponseEntity.ok(ApiResponse.ok("Consulta de usuarios realizada exitosamente.", usuarios));
+    @PostMapping
+    public ResponseEntity<GenericResponse<UsuarioResponseDTO>> crearUsuario(
+            @Valid @RequestBody UsuarioCreacionRequest request) {
+        UsuarioResponseDTO usuario = usuarioService.crearUsuario(request);
+        GenericResponse<UsuarioResponseDTO> response = GenericResponse.<UsuarioResponseDTO>builder()
+                .mensaje("Usuario creado exitosamente")
+                .data(usuario)
+                .status(HttpStatus.CREATED.value())
+                .codigo(HttpStatus.CREATED.value())
+                .build();
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
-    @Operation(summary = "Consultar usuarios combinando filtros dinámicos en el cuerpo de la petición (POST /usuarios/filtro)")
-    @PostMapping(value = "/filtro", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<List<UsuarioResponse>>> filtrarUsuariosPost(
-            @Valid @RequestBody(required = false) UsuarioFiltroRequest request) {
-        List<UsuarioResponse> usuarios = usuarioService.filtrarUsuarios(request);
-        return ResponseEntity.ok(ApiResponse.ok("Consulta de usuarios realizada exitosamente.", usuarios));
+    @PostMapping(value = {"/buscar", "/consultar"})
+    public ResponseEntity<GenericResponse<PaginaResponseDTO<UsuarioResponseDTO>>> buscarUsuarios(
+            @Valid @RequestBody(required = false) UsuarioBusquedaRequest request) {
+        Page<UsuarioResponseDTO> resultado = usuarioService.buscarUsuarios(request);
+        GenericResponse<PaginaResponseDTO<UsuarioResponseDTO>> response = GenericResponse.<PaginaResponseDTO<UsuarioResponseDTO>>builder()
+                .mensaje("Búsqueda de usuarios realizada exitosamente")
+                .data(PaginaResponseDTO.desde(resultado))
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Agregar un nuevo usuario con contraseña cifrada en BCrypt (PUT /usuarios/agregar)")
-    @PutMapping(value = "/agregar", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<UsuarioResponse>> agregarUsuarioPut(
-            @Valid @RequestBody UsuarioRequest request) {
-        UsuarioResponse response = usuarioService.agregarUsuario(request);
-        return new ResponseEntity<>(ApiResponse.created("Usuario registrado exitosamente.", response), HttpStatus.CREATED);
+    @PutMapping
+    public ResponseEntity<GenericResponse<UsuarioResponseDTO>> actualizarUsuario(
+            @Valid @RequestBody UsuarioActualizaRequest request) {
+        UsuarioResponseDTO usuario = usuarioService.actualizarUsuario(request);
+        GenericResponse<UsuarioResponseDTO> response = GenericResponse.<UsuarioResponseDTO>builder()
+                .mensaje("Usuario actualizado exitosamente")
+                .data(usuario)
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Agregar un nuevo usuario con contraseña cifrada en BCrypt (POST /usuarios/agregar)")
-    @PostMapping(value = "/agregar", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<UsuarioResponse>> agregarUsuarioPost(
-            @Valid @RequestBody UsuarioRequest request) {
-        UsuarioResponse response = usuarioService.agregarUsuario(request);
-        return new ResponseEntity<>(ApiResponse.created("Usuario registrado exitosamente.", response), HttpStatus.CREATED);
+    @PatchMapping("/estado")
+    public ResponseEntity<GenericResponse<UsuarioResponseDTO>> cambiarEstado(
+            @Valid @RequestBody UsuarioCambioEstadoRequest request) {
+        UsuarioResponseDTO usuario = usuarioService.cambiarEstado(request);
+        GenericResponse<UsuarioResponseDTO> response = GenericResponse.<UsuarioResponseDTO>builder()
+                .mensaje("Estado del usuario actualizado exitosamente")
+                .data(usuario)
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Actualizar parcialmente la información de un usuario")
-    @PatchMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<UsuarioResponse>> actualizarUsuario(
-            @Valid @RequestBody UsuarioActualizacionRequest request) {
-        UsuarioResponse response = usuarioService.actualizarUsuario(request);
-        return ResponseEntity.ok(ApiResponse.ok("Usuario actualizado exitosamente.", response));
-    }
-
-    @Operation(summary = "Baja lógica de un usuario")
-    @DeleteMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<UsuarioResponse>> darBajaUsuario(
-            @Valid @RequestBody UsuarioBajaRequest request) {
-        UsuarioResponse response = usuarioService.darBajaUsuario(request);
-        return ResponseEntity.ok(ApiResponse.ok("Usuario desactivado exitosamente.", response));
+    @DeleteMapping
+    public ResponseEntity<GenericResponse<Void>> eliminarUsuario(
+            @Valid @RequestBody UsuarioEliminaRequest request) {
+        usuarioService.eliminarUsuario(request);
+        GenericResponse<Void> response = GenericResponse.<Void>builder()
+                .mensaje("Usuario eliminado exitosamente")
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 }

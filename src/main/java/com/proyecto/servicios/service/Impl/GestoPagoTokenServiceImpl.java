@@ -4,15 +4,13 @@ import com.proyecto.servicios.client.GestoPagoAuthClient;
 import com.proyecto.servicios.entity.gestopago.GestoPagoToken;
 import com.proyecto.servicios.mapper.GestoPagoTokenMapper;
 import com.proyecto.servicios.model.gestopago.GestoPagoAuthResponse;
-import com.proyecto.servicios.repositorys.gestopago.GestoPagoTokenRepository;
+import com.proyecto.servicios.repository.gestopago.GestoPagoTokenRepository;
 import com.proyecto.servicios.service.GestoPagoTokenService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -41,16 +39,12 @@ public class GestoPagoTokenServiceImpl implements GestoPagoTokenService {
     }
 
     @Override
-    @Scheduled(fixedRateString = "${gestopago.auth.refresh-rate-ms:3600000}", initialDelay = 10000)
+    @Scheduled(fixedRateString = "${gestopago.auth.refresh-rate-ms:3600000}", initialDelay = 0)
     public void renovarToken() {
         log.info("Renovando token GestoPago para distribuidor={}", idDistribuidor);
         try {
-            Map<String, Object> formParams = new HashMap<>();
-            formParams.put("idDistribuidor", idDistribuidor);
-            formParams.put("codigoDispositivo", codigoDispositivo);
-            formParams.put("password", password);
-
-            GestoPagoAuthResponse response = gestoPagoAuthClient.authenticate(formParams);
+            GestoPagoAuthResponse response = gestoPagoAuthClient.authenticate(
+                    idDistribuidor, codigoDispositivo, password);
 
             if (response == null || response.getToken() == null) {
                 log.error("La respuesta de GestoPago no contiene token");

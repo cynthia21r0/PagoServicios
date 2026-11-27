@@ -1,32 +1,14 @@
 package com.proyecto.servicios.service;
 
-import com.proyecto.servicios.model.CuentaActualizacionRequest;
-import com.proyecto.servicios.model.CuentaFiltroRequest;
-import com.proyecto.servicios.model.CuentaRequest;
-import com.proyecto.servicios.model.CuentaResponse;
-import com.proyecto.servicios.model.SaldoCuentaResponse;
+import com.proyecto.servicios.entity.onboarding.Cuenta;
+import com.proyecto.servicios.entity.onboarding.catalogos.EstatusCuenta;
 
 import java.util.List;
 
 public interface CuentaService {
-
-    List<CuentaResponse> filtrarCuentas(CuentaFiltroRequest filtro);
-
-    CuentaResponse consultarPorNumeroCuenta(String numeroCuenta);
-
-    List<CuentaResponse> consultarPorClienteId(Long clienteId);
-
-    List<CuentaResponse> consultarPorEstatus(String estatus);
-
-    List<CuentaResponse> consultarCuentasActivas();
-
-    List<CuentaResponse> consultarTodas();
-
-    SaldoCuentaResponse consultarSaldo(String numeroCuenta);
-
-    CuentaResponse crearCuenta(CuentaRequest request);
-
-    CuentaResponse actualizarCuenta(CuentaActualizacionRequest request);
-
-    CuentaResponse actualizarCuenta(String numeroCuenta, CuentaActualizacionRequest request);
+    Cuenta crearCuentaParaCliente(Long clienteId);
+    Cuenta obtenerPorNumeroCuenta(String numeroCuenta);
+    List<Cuenta> obtenerPorClienteId(Long clienteId);
+    List<Cuenta> buscarPorEstatus(EstatusCuenta estatus);
+    Cuenta actualizarEstatus(String numeroCuenta, EstatusCuenta nuevoEstatus);
 }

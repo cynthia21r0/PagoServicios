@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.Environment;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.data.mongodb.repository.config.EnableMongoRepositories;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
 import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
@@ -21,17 +22,23 @@ import javax.sql.DataSource;
 import java.util.HashMap;
 import java.util.Map;
 
-
 @Slf4j
 @Configuration
 @EnableTransactionManagement
 @EnableJpaRepositories(
         basePackages = {
-                "com.proyecto.servicios.repositorys.sf",
-                "com.proyecto.servicios.repositorys.gestopago"
+                "com.proyecto.servicios.repository.sf",
+                "com.proyecto.servicios.repository.gestopago",
+                "com.proyecto.servicios.repository.onboarding",
+                "com.proyecto.servicios.repository.transaccion"
         },
         transactionManagerRef = "sfTransactionManager",
         entityManagerFactoryRef = "sfEntityManagerFactory"
+)
+@EnableMongoRepositories(
+        basePackages = {
+                "com.proyecto.servicios.repository.gestopago"
+        }
 )
 public class ConfigDB {
     @Autowired
@@ -41,12 +48,12 @@ public class ConfigDB {
     public DataSource sfDatasource(){
         HikariConfig config=new HikariConfig();
         try{
-            config.setJdbcUrl(env.getProperty("spring.datasource.url"));
-            config.setPassword(env.getProperty("spring.datasource.password"));
-            config.setUsername(env.getProperty("spring.datasource.username"));
+            config.setJdbcUrl(env.getProperty("spring.datasource.url", "jdbc:postgresql://localhost:5432/gestopagos"));
+            config.setPassword(env.getProperty("spring.datasource.password", "admin"));
+            config.setUsername(env.getProperty("spring.datasource.username", "postgres"));
             config.setMaximumPoolSize(10);
-            config.setMaxLifetime(1800000);
-            config.setConnectionTimeout(30000);
+            config.setMaxLifetime(18800);
+            config.setConnectionTimeout(5000);
             config.setValidationTimeout(5000);
             config.setMinimumIdle(2);
             config.setConnectionTestQuery("SELECT 1");
@@ -67,18 +74,20 @@ public class ConfigDB {
           em.setDataSource(sfDatasource());
           em.setPackagesToScan(
                   "com.proyecto.servicios.entity.sf",
-                  "com.proyecto.servicios.entity.gestopago"
+                  "com.proyecto.servicios.entity.gestopago",
+                  "com.proyecto.servicios.entity.onboarding",
+                  "com.proyecto.servicios.entity.transaccion"
           );
           em.setPersistenceUnitName("sfDatasource");
             HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();
             em.setJpaVendorAdapter(vendorAdapter);
           Map<String, Object> properties=new HashMap<>();
-          properties.put("hibernate.hbm2ddl.auto", env.getProperty("spring.jpa.hibernate.ddl-auto", "update"));
-          properties.put("hibernate.show_sql", false);
-          properties.put("hibernate.dialect", env.getProperty("spring.jpa.database-platform", "org.hibernate.dialect.PostgreSQLDialect"));
+          properties.put("hibernate.hbm2ddl.auto", "update");
+          properties.put("hibernate.show-sql", true);
+          properties.put("hibernate.dialect", "org.hibernate.dialect.PostgreSQLDialect");
           properties.put("jakarta.persistence.query.timeout", 600000);
-          em.setJpaPropertyMap(properties);
 
+          em.setJpaPropertyMap(properties);
 
         } catch (Exception e) {
             log.error("Ha ocurrido un error en la conexion a base de datos, a causa de:",e);
