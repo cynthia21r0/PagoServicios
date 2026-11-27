@@ -153,7 +153,11 @@ public class EmailServiceImpl implements EmailService {
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("api-key", brevoApiKey.trim());
 
-            String senderEmail = (remitente != null && !remitente.trim().isEmpty()) ? remitente.trim() : "bhleonel705@gmail.com";
+            if (remitente == null || remitente.trim().isEmpty()) {
+                log.warn("[EMAIL 2FA BREVO ERROR] MAIL_USERNAME no configurado. Intentando fallback...");
+                return false;
+            }
+            String senderEmail = remitente.trim();
 
             Map<String, Object> body = new HashMap<>();
             body.put("sender", Map.of("name", "GestoPago Bank", "email", senderEmail));
