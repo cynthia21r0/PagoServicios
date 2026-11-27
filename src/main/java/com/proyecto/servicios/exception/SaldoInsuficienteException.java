@@ -1,8 +1,7 @@
 package com.proyecto.servicios.exception;
 
-public class SaldoInsuficienteException extends RuntimeException {
-    public SaldoInsuficienteException(String message) {
-        super(message);
+public class SaldoInsuficienteException extends OperacionNoProcesableException {
+    public SaldoInsuficienteException() {
+        super("Saldo insuficiente para realizar la operacion");
     }
 }
-

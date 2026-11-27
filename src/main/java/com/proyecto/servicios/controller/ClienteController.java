@@ -1,84 +1,174 @@
 package com.proyecto.servicios.controller;
 
-import com.proyecto.servicios.model.ApiResponse;
-import com.proyecto.servicios.model.ClienteActualizacionRequest;
-import com.proyecto.servicios.model.ClienteBajaRequest;
-import com.proyecto.servicios.model.ClienteFiltroRequest;
-import com.proyecto.servicios.model.ClienteRegistroRequest;
-import com.proyecto.servicios.model.ClienteResponse;
+import com.proyecto.servicios.entity.onboarding.catalogos.TipoBaja;
+import com.proyecto.servicios.exception.UnauthorizedAccessException;
+import com.proyecto.servicios.model.onboarding.ClienteActualizaRequest;
+import com.proyecto.servicios.model.onboarding.ClienteRegistroRequest;
+import com.proyecto.servicios.model.onboarding.dto.ClienteResponseDTO;
+import com.proyecto.servicios.model.response.GenericResponse;
+import com.proyecto.servicios.model.response.PaginaResponseDTO;
 import com.proyecto.servicios.service.ClienteService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
+@Validated
 @RestController
 @RequestMapping("/clientes")
-@Tag(name = "Clientes", description = "API para el onboarding, consulta dinámica, actualización parcial y baja lógica de clientes personas físicas")
+@RequiredArgsConstructor
 public class ClienteController {
 
-    @Autowired
-    private ClienteService clienteService;
+    private final ClienteService clienteService;
 
-    @Operation(summary = "Registrar un nuevo cliente persona física (crea automáticamente cuenta bancaria y usuario de acceso)")
-    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ClienteResponse>> registrarCliente(
-            @Valid @RequestBody ClienteRegistroRequest request) {
-        ClienteResponse response = clienteService.registrarCliente(request);
-        return new ResponseEntity<>(ApiResponse.created("Cliente registrado exitosamente.", response), HttpStatus.CREATED);
+    @PostMapping
+    public ResponseEntity<GenericResponse<ClienteResponseDTO>> registrarCliente(@Valid @RequestBody ClienteRegistroRequest request) {
+        ClienteResponseDTO cliente = clienteService.registrarCliente(request);
+        GenericResponse<ClienteResponseDTO> response = GenericResponse.<ClienteResponseDTO>builder()
+                .mensaje("Cliente registrado exitosamente")
+                .data(cliente)
+                .status(HttpStatus.CREATED.value())
+                .codigo(HttpStatus.CREATED.value())
+                .build();
+        return new ResponseEntity<>(response, HttpStatus.CREATED);
     }
 
-    @Operation(summary = "Consultar clientes combinando diferentes criterios de búsqueda en un único endpoint (GET /clientes)")
-    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<List<ClienteResponse>>> consultarClientesGet(
-            @Valid @RequestBody(required = false) ClienteFiltroRequest request) {
-        List<ClienteResponse> clientes = clienteService.filtrarClientes(request);
-        return ResponseEntity.ok(ApiResponse.ok("Consulta de clientes realizada exitosamente.", clientes));
+    @GetMapping
+    public ResponseEntity<GenericResponse<PaginaResponseDTO<ClienteResponseDTO>>> obtenerClientes(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String nombre,
+            @RequestParam(required = false) String apellidoPaterno,
+            @RequestParam(required = false) String apellidoMaterno) {
+
+        Page<ClienteResponseDTO> clientes = clienteService.buscarClientes(nombre, apellidoPaterno, apellidoMaterno, page, size);
+        GenericResponse<PaginaResponseDTO<ClienteResponseDTO>> response = GenericResponse.<PaginaResponseDTO<ClienteResponseDTO>>builder()
+                .mensaje("Consulta exitosa")
+                .data(PaginaResponseDTO.desde(clientes))
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Consultar clientes combinando diferentes criterios de búsqueda en un único endpoint (POST /clientes/filtro)")
-    @PostMapping(value = "/filtro", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<List<ClienteResponse>>> consultarClientesPost(
-            @Valid @RequestBody(required = false) ClienteFiltroRequest request) {
-        List<ClienteResponse> clientes = clienteService.filtrarClientes(request);
-        return ResponseEntity.ok(ApiResponse.ok("Consulta de clientes realizada exitosamente.", clientes));
+    @GetMapping("/por-id")
+    public ResponseEntity<GenericResponse<ClienteResponseDTO>> obtenerPorId(@RequestParam Long id) {
+        verificarPropietario(id);
+        GenericResponse<ClienteResponseDTO> response = GenericResponse.<ClienteResponseDTO>builder()
+                .mensaje("Consulta exitosa")
+                .data(clienteService.buscarCliente(id))
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Actualizar parcialmente la información de un cliente (PATCH /clientes)")
-    @PatchMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ClienteResponse>> actualizarParcialmenteClientePatch(
-            @Valid @RequestBody ClienteActualizacionRequest request) {
-        ClienteResponse response = clienteService.actualizarCliente(request);
-        return ResponseEntity.ok(ApiResponse.ok("Cliente actualizado exitosamente.", response));
+    @GetMapping("/por-rfc-curp")
+    public ResponseEntity<GenericResponse<ClienteResponseDTO>> obtenerPorRfcYCurp(
+            @RequestParam String rfc,
+            @RequestParam String curp) {
+
+        ClienteResponseDTO cliente = clienteService.buscarCliente(rfc, curp);
+        verificarPropietario(cliente.getId());
+        GenericResponse<ClienteResponseDTO> response = GenericResponse.<ClienteResponseDTO>builder()
+                .mensaje("Consulta exitosa")
+                .data(cliente)
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Actualizar parcialmente la información de un cliente (PUT /clientes)")
-    @PutMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ClienteResponse>> actualizarParcialmenteClientePut(
-            @Valid @RequestBody ClienteActualizacionRequest request) {
-        ClienteResponse response = clienteService.actualizarCliente(request);
-        return ResponseEntity.ok(ApiResponse.ok("Cliente actualizado exitosamente.", response));
+    @GetMapping("/por-curp")
+    public ResponseEntity<GenericResponse<ClienteResponseDTO>> obtenerPorCurp(@RequestParam String curp) {
+        ClienteResponseDTO cliente = clienteService.obtenerPorCurp(curp);
+        verificarPropietario(cliente.getId());
+        GenericResponse<ClienteResponseDTO> response = GenericResponse.<ClienteResponseDTO>builder()
+                .mensaje("Consulta exitosa")
+                .data(cliente)
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Baja lógica de un cliente (desactiva cliente, usuario y cuentas sin eliminar físicamente)")
-    @DeleteMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ClienteResponse>> darBajaLogicaDelete(
-            @Valid @RequestBody ClienteBajaRequest request) {
-        ClienteResponse response = clienteService.darBajaLogica(request);
-        return ResponseEntity.ok(ApiResponse.ok("Baja lógica de cliente aplicada exitosamente.", response));
+    @GetMapping("/por-rfc")
+    public ResponseEntity<GenericResponse<ClienteResponseDTO>> obtenerPorRfc(@RequestParam String rfc) {
+        ClienteResponseDTO cliente = clienteService.obtenerPorRfc(rfc);
+        verificarPropietario(cliente.getId());
+        GenericResponse<ClienteResponseDTO> response = GenericResponse.<ClienteResponseDTO>builder()
+                .mensaje("Consulta exitosa")
+                .data(cliente)
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
     }
 
-    @Operation(summary = "Baja lógica de un cliente mediante PATCH /clientes/baja")
-    @PatchMapping(value = "/baja", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<ClienteResponse>> darBajaLogicaPatch(
-            @Valid @RequestBody ClienteBajaRequest request) {
-        ClienteResponse response = clienteService.darBajaLogica(request);
-        return ResponseEntity.ok(ApiResponse.ok("Baja lógica de cliente aplicada exitosamente.", response));
+    @PatchMapping("/actualizar")
+    public ResponseEntity<GenericResponse<ClienteResponseDTO>> actualizarParcialmente(
+            @RequestParam Long id,
+            @Valid @RequestBody ClienteActualizaRequest request) {
+
+        verificarPropietario(id);
+        ClienteResponseDTO clienteActualizado = clienteService.actualizarParcialmente(id, request);
+        GenericResponse<ClienteResponseDTO> response = GenericResponse.<ClienteResponseDTO>builder()
+                .mensaje("Cliente actualizado exitosamente")
+                .data(clienteActualizado)
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/bloquear")
+    public ResponseEntity<GenericResponse<Void>> bloquearCliente(@RequestParam Long id) {
+        verificarPropietario(id);
+        clienteService.bloquear(id);
+        GenericResponse<Void> response = GenericResponse.<Void>builder()
+                .mensaje("Cliente bloqueado exitosamente")
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
+    @PatchMapping("/desbloquear")
+    public ResponseEntity<GenericResponse<Void>> desbloquearCliente(@RequestParam Long id) {
+        verificarPropietario(id);
+        clienteService.desbloquear(id);
+        GenericResponse<Void> response = GenericResponse.<Void>builder()
+                .mensaje("Cliente desbloqueado exitosamente")
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
+    @DeleteMapping("/baja")
+    public ResponseEntity<GenericResponse<Void>> bajaLogica(
+            @RequestParam Long id,
+            @RequestParam TipoBaja tipoBaja) {
+
+        verificarPropietario(id);
+        clienteService.bajaLogica(id, tipoBaja);
+        GenericResponse<Void> response = GenericResponse.<Void>builder()
+                .mensaje("Cliente dado de baja exitosamente")
+                .status(HttpStatus.OK.value())
+                .codigo(HttpStatus.OK.value())
+                .build();
+        return ResponseEntity.ok(response);
+    }
+
+    private void verificarPropietario(Long id) {
+        String correoAutenticado = SecurityContextHolder.getContext().getAuthentication().getName();
+        ClienteResponseDTO cliente = clienteService.buscarCliente(id);
+        if (!cliente.getCorreoElectronico().equalsIgnoreCase(correoAutenticado)) {
+            throw new UnauthorizedAccessException("No tienes permiso para acceder o modificar este cliente.");
+        }
     }
 }

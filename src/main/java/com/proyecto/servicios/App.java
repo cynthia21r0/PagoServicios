@@ -19,6 +19,10 @@ import java.time.format.DateTimeFormatter;
 @Slf4j
 public class App implements CommandLineRunner {
 
+    static {
+        System.setProperty("sun.net.http.retryPost", "false");
+    }
+
     @Autowired
     private ApplicationContext context;
 
@@ -38,5 +42,6 @@ public class App implements CommandLineRunner {
                 + "Fecha Compilación: " + out + "\n"
                 + "Artefacto: " + buildProperties.getArtifact() + "\n"
                 + "Grupo: " + buildProperties.getGroup());
+
     }
 }

@@ -1,47 +1,35 @@
 package com.proyecto.servicios.service;
 
-import com.proyecto.servicios.model.ClienteActualizacionRequest;
-import com.proyecto.servicios.model.ClienteBajaRequest;
-import com.proyecto.servicios.model.ClienteFiltroRequest;
-import com.proyecto.servicios.model.ClienteRegistroRequest;
-import com.proyecto.servicios.model.ClienteResponse;
-
-import java.time.LocalDate;
-import java.util.List;
+import com.proyecto.servicios.entity.onboarding.catalogos.TipoBaja;
+import com.proyecto.servicios.model.onboarding.ClienteActualizaRequest;
+import com.proyecto.servicios.model.onboarding.ClienteRegistroRequest;
+import com.proyecto.servicios.model.onboarding.dto.ClienteResponseDTO;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 public interface ClienteService {
 
-    ClienteResponse registrarCliente(ClienteRegistroRequest request);
+    ClienteResponseDTO registrarCliente(ClienteRegistroRequest request);
 
-    List<ClienteResponse> filtrarClientes(ClienteFiltroRequest filtro);
+    Page<ClienteResponseDTO> buscarClientes(Pageable pageable);
 
-    List<ClienteResponse> consultarTodos();
+    Page<ClienteResponseDTO> buscarClientes(int page, int size);
 
-    ClienteResponse consultarPorId(Long id);
+    Page<ClienteResponseDTO> buscarClientes(String nombre, String apellidoPaterno, String apellidoMaterno, Pageable pageable);
 
-    ClienteResponse consultarPorCurp(String curp);
+    Page<ClienteResponseDTO> buscarClientes(String nombre, String apellidoPaterno, String apellidoMaterno, int page, int size);
 
-    ClienteResponse consultarPorRfc(String rfc);
+    ClienteResponseDTO buscarCliente(Long id);
 
-    ClienteResponse consultarPorCorreo(String correo);
+    ClienteResponseDTO buscarCliente(String rfc, String curp);
 
-    ClienteResponse consultarPorNumeroCuenta(String numeroCuenta);
+    ClienteResponseDTO obtenerPorId(Long id);
+    ClienteResponseDTO obtenerPorCurp(String curp);
+    ClienteResponseDTO obtenerPorRfc(String rfc);
+    ClienteResponseDTO obtenerPorRfcYCurp(String rfc, String curp);
 
-    List<ClienteResponse> buscarPorNombre(String nombre);
-
-    List<ClienteResponse> buscarPorApellidoPaterno(String apellidoPaterno);
-
-    List<ClienteResponse> buscarPorApellidoMaterno(String apellidoMaterno);
-
-    List<ClienteResponse> consultarClientesActivos();
-
-    List<ClienteResponse> consultarPorRangoFechas(LocalDate fechaInicio, LocalDate fechaFin);
-
-    ClienteResponse actualizarCliente(ClienteActualizacionRequest request);
-
-    ClienteResponse actualizarCliente(Long id, ClienteActualizacionRequest request);
-
-    ClienteResponse darBajaLogica(ClienteBajaRequest request);
-
-    ClienteResponse darBajaLogica(Long id);
+    ClienteResponseDTO actualizarParcialmente(Long id, ClienteActualizaRequest request);
+    void bajaLogica(Long id, TipoBaja tipoBaja);
+    void bloquear(Long id);
+    void desbloquear(Long id);
 }

@@ -1,67 +1,110 @@
 package com.proyecto.servicios.controller;
 
-import com.proyecto.servicios.model.ApiResponse;
-import com.proyecto.servicios.model.CuentaActualizacionRequest;
-import com.proyecto.servicios.model.CuentaFiltroRequest;
-import com.proyecto.servicios.model.CuentaRequest;
-import com.proyecto.servicios.model.CuentaResponse;
+import com.proyecto.servicios.entity.onboarding.Cuenta;
+import com.proyecto.servicios.entity.onboarding.Usuario;
+import com.proyecto.servicios.entity.onboarding.catalogos.EstatusCuenta;
+import com.proyecto.servicios.exception.AccesoDenegadoException;
+import com.proyecto.servicios.repository.onboarding.UsuarioRepository;
 import com.proyecto.servicios.service.CuentaService;
-import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
 import java.util.List;
 
 @RestController
 @RequestMapping("/cuentas")
-@Tag(name = "Cuentas", description = "API para creación, consulta dinámica y actualización parcial de cuentas bancarias")
 public class CuentaController {
 
     @Autowired
     private CuentaService cuentaService;
 
-    @Operation(summary = "Consultar cuentas bancarias combinando filtros dinámicos (GET /cuentas)")
-    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<List<CuentaResponse>>> consultarCuentasGet(
-            @Valid @RequestBody(required = false) CuentaFiltroRequest request) {
-        List<CuentaResponse> cuentas = cuentaService.filtrarCuentas(request);
-        return ResponseEntity.ok(ApiResponse.ok("Consulta de cuentas realizada exitosamente.", cuentas));
+    @Autowired
+    private UsuarioRepository usuarioRepository;
+
+    @PreAuthorize("hasRole('CLIENTE') and hasAuthority('SCOPE_READ')")
+    @GetMapping("/mis-cuentas")
+    public ResponseEntity<List<Cuenta>> misCuentas(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        Usuario usuario = usuarioRepository.findByCorreo(authentication.getName()).orElse(null);
+        if (usuario == null || usuario.getCliente() == null) {
+            return ResponseEntity.ok(Collections.emptyList());
+        }
+        return ResponseEntity.ok(cuentaService.obtenerPorClienteId(usuario.getCliente().getId()));
     }
 
-    @Operation(summary = "Consultar cuentas bancarias combinando filtros dinámicos (POST /cuentas/filtro)")
-    @PostMapping(value = "/filtro", produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<List<CuentaResponse>>> consultarCuentasPost(
-            @Valid @RequestBody(required = false) CuentaFiltroRequest request) {
-        List<CuentaResponse> cuentas = cuentaService.filtrarCuentas(request);
-        return ResponseEntity.ok(ApiResponse.ok("Consulta de cuentas realizada exitosamente.", cuentas));
+    @PreAuthorize("(hasRole('CLIENTE') and hasAuthority('SCOPE_READ')) or hasRole('ADMIN')")
+    @GetMapping("/{numeroCuenta}")
+    public ResponseEntity<Cuenta> consultarPorNumeroCuenta(
+            @PathVariable String numeroCuenta,
+            Authentication authentication) {
+        Cuenta cuenta = obtenerCuentaAutorizada(numeroCuenta, authentication);
+        return ResponseEntity.ok(cuenta);
     }
 
-    @Operation(summary = "Crear una nueva cuenta bancaria asociada a un cliente activo")
-    @PostMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<CuentaResponse>> crearCuenta(
-            @Valid @RequestBody CuentaRequest request) {
-        CuentaResponse response = cuentaService.crearCuenta(request);
-        return new ResponseEntity<>(ApiResponse.created("Cuenta bancaria creada exitosamente.", response), HttpStatus.CREATED);
+    @PreAuthorize("hasRole('ADMIN')")
+    @GetMapping
+    public ResponseEntity<List<Cuenta>> buscarCuentas(
+            @RequestParam(required = false) Long clienteId,
+            @RequestParam(required = false) EstatusCuenta estatus) {
+
+        if (clienteId != null) {
+            return ResponseEntity.ok(cuentaService.obtenerPorClienteId(clienteId));
+        } else if (estatus != null) {
+            return ResponseEntity.ok(cuentaService.buscarPorEstatus(estatus));
+        }
+
+        return ResponseEntity.badRequest().build();
     }
 
-    @Operation(summary = "Actualizar parcialmente la información de una cuenta (PATCH /cuentas)")
-    @PatchMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<CuentaResponse>> actualizarCuentaPatch(
-            @Valid @RequestBody CuentaActualizacionRequest request) {
-        CuentaResponse response = cuentaService.actualizarCuenta(request);
-        return ResponseEntity.ok(ApiResponse.ok("Cuenta bancaria actualizada exitosamente.", response));
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping
+    public ResponseEntity<Cuenta> crearCuenta(@RequestParam Long clienteId) {
+        return new ResponseEntity<>(cuentaService.crearCuentaParaCliente(clienteId), HttpStatus.CREATED);
     }
 
-    @Operation(summary = "Actualizar parcialmente la información de una cuenta (PUT /cuentas)")
-    @PutMapping(produces = MediaType.APPLICATION_JSON_VALUE, consumes = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<ApiResponse<CuentaResponse>> actualizarCuentaPut(
-            @Valid @RequestBody CuentaActualizacionRequest request) {
-        CuentaResponse response = cuentaService.actualizarCuenta(request);
-        return ResponseEntity.ok(ApiResponse.ok("Cuenta bancaria actualizada exitosamente.", response));
+    @PreAuthorize("hasRole('ADMIN')")
+    @PutMapping("/{numeroCuenta}")
+    public ResponseEntity<Cuenta> actualizarEstatus(@PathVariable String numeroCuenta, @RequestParam EstatusCuenta estatus) {
+        return ResponseEntity.ok(cuentaService.actualizarEstatus(numeroCuenta, estatus));
+    }
+
+    @PreAuthorize("hasRole('CLIENTE') and hasAuthority('SCOPE_WRITE')")
+    @PatchMapping("/mis-cuentas/estatus")
+    public ResponseEntity<?> cambiarEstatusMiCuenta(
+            @RequestParam String numeroCuenta,
+            @RequestParam EstatusCuenta estatus,
+            Authentication authentication) {
+
+        obtenerCuentaAutorizada(numeroCuenta, authentication);
+        Cuenta actualizada = cuentaService.actualizarEstatus(numeroCuenta, estatus);
+        return ResponseEntity.ok(actualizada);
+    }
+
+    private Cuenta obtenerCuentaAutorizada(String numeroCuenta, Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            throw new AccesoDenegadoException("Sesión no autenticada");
+        }
+        Cuenta cuenta = cuentaService.obtenerPorNumeroCuenta(numeroCuenta);
+
+        boolean esAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equals(a.getAuthority()));
+        if (esAdmin) {
+            return cuenta;
+        }
+
+        Usuario usuario = usuarioRepository.findByCorreo(authentication.getName()).orElse(null);
+        if (usuario == null || usuario.getCliente() == null
+                || cuenta.getCliente() == null
+                || !cuenta.getCliente().getId().equals(usuario.getCliente().getId())) {
+            throw new AccesoDenegadoException("No tiene autorización sobre esta cuenta");
+        }
+        return cuenta;
     }
 }

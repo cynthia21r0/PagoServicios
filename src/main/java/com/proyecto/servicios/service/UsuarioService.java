@@ -1,22 +1,26 @@
 package com.proyecto.servicios.service;
 
-import com.proyecto.servicios.model.UsuarioActualizacionRequest;
-import com.proyecto.servicios.model.UsuarioBajaRequest;
-import com.proyecto.servicios.model.UsuarioFiltroRequest;
-import com.proyecto.servicios.model.UsuarioRequest;
-import com.proyecto.servicios.model.UsuarioResponse;
+import com.proyecto.servicios.entity.onboarding.Usuario;
+import com.proyecto.servicios.model.usuario.*;
+import org.springframework.data.domain.Page;
 
 import java.util.List;
 
 public interface UsuarioService {
 
-    List<UsuarioResponse> filtrarUsuarios(UsuarioFiltroRequest filtro);
+    UsuarioResponseDTO crearUsuario(UsuarioCreacionRequest request);
 
-    List<UsuarioResponse> filtrarUsuarios(Long id, Long clienteId, String correo, Boolean activo);
+    Page<UsuarioResponseDTO> buscarUsuarios(UsuarioBusquedaRequest request);
 
-    UsuarioResponse agregarUsuario(UsuarioRequest request);
+    UsuarioResponseDTO actualizarUsuario(UsuarioActualizaRequest request);
 
-    UsuarioResponse actualizarUsuario(UsuarioActualizacionRequest request);
+    UsuarioResponseDTO cambiarEstado(UsuarioCambioEstadoRequest request);
 
-    UsuarioResponse darBajaUsuario(UsuarioBajaRequest request);
+    void eliminarUsuario(UsuarioEliminaRequest request);
+
+    Usuario crearUsuarioParaCliente(Long clienteId, String correo, String rawPassword);
+
+    void inactivarUsuario(Long clienteId);
+
+    List<Usuario> obtenerActivos(Boolean activo);
 }
